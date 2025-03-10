@@ -12,5 +12,11 @@ app.get("/", (req, res) => {
   res.send("Server is running");
 });
 
+app.post("/api/submit-url", async (req, res) => {
+  const { url } = req.body;
+  console.log(`Received URL: ${url}`);
+  res.json({ message: "URL received" });
+});
+
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
