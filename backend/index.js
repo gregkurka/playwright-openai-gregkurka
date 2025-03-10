@@ -9,11 +9,18 @@ const { exec } = require("child_process");
 
 async function runPlaywrightTest(filePath) {
   return new Promise((resolve, reject) => {
+    console.log(`Attempting to run test at: ${filePath}`);
+
+    // Ensure the file path uses forward slashes for Windows compatibility
+    const normalizedPath = path.normalize(filePath);
+
     exec(
-      `npx playwright test ${filePath} --reporter=json`,
+      `npx playwright test "${normalizedPath}" --reporter=json`,
+      { cwd: __dirname },
       (error, stdout, stderr) => {
         if (error) {
-          reject(stderr);
+          console.error("Error executing test:", stderr || error);
+          reject(stderr || error);
         } else {
           resolve(stdout);
         }
@@ -120,13 +127,19 @@ app.post("/api/submit-url", async (req, res) => {
 app.post("/api/run-test", async (req, res) => {
   const { testFilePath } = req.body;
 
+  if (!testFilePath) {
+    return res
+      .status(400)
+      .json({ success: false, error: "Test file path is missing" });
+  }
+
   try {
     console.log(`Running Playwright test: ${testFilePath}`);
     const result = await runPlaywrightTest(testFilePath);
     res.json({ success: true, result });
   } catch (error) {
     console.error("Error running test:", error);
-    res.status(500).json({ success: false, error: "Failed to run test" });
+    res.status(500).json({ success: false, error: error.toString() });
   }
 });
 
