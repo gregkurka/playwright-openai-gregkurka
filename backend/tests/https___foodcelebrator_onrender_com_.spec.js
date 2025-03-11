@@ -1,59 +1,53 @@
 const { test, expect } = require('@playwright/test');
 
-test.describe('Food Celebrator User Interactions', () => {
-  
-  test.beforeEach(async ({ page }) => {
-    await page.goto('https://foodcelebrator.onrender.com/');
-    await page.waitForLoadState('domcontentloaded');
-  });
+test('Food Celebrator critical interactions', async ({ page }) => {
+  // Navigate to the homepage
+  await page.goto('https://foodcelebrator.onrender.com/');
+  await page.waitForLoadState('domcontentloaded');
 
-  test('Navigates to Sign Up page', async ({ page }) => {
-    const signUpLink = page.locator('a:has-text("Sign Up")');
-    await expect(signUpLink).toBeVisible();
-    await signUpLink.click();
-    await page.waitForLoadState('domcontentloaded');
-    await expect(page).toHaveURL('https://foodcelebrator.onrender.com/signup');
-  });
+  // Verify Home, Sign Up, and Login links are visible in the sidebar
+  const homeLink = page.locator('a[href="/"]').first();
+  await homeLink.waitFor();
+  await expect(homeLink).toBeVisible();
 
-  test('Navigates to Login page', async ({ page }) => {
-    const loginLink = page.locator('a:has-text("Login")');
-    await expect(loginLink).toBeVisible();
-    await loginLink.click();
-    await page.waitForLoadState('domcontentloaded');
-    await expect(page).toHaveURL('https://foodcelebrator.onrender.com/login');
-  });
-  
-  test('Validates Home button visibility', async ({ page }) => {
-    const homeButton = page.locator('a:has-text("Home")');
-    await expect(homeButton).toBeVisible();
-  });
+  const signUpLink = page.locator('a[href="/signup"]').first();
+  await signUpLink.waitFor();
+  await expect(signUpLink).toBeVisible();
 
-  test('Toggles theme mode', async ({ page }) => {
-    const themeToggle = page.locator('button:text("🌙")');
-    await expect(themeToggle).toBeVisible();
-    await themeToggle.click();
-  });
+  const loginLink = page.locator('a[href="/login"]').first();
+  await loginLink.waitFor();
+  await expect(loginLink).toBeVisible();
 
-  test('Footer links are visible', async ({ page }) => {
-    const aboutLink = page.locator('footer a:has-text("About")');
-    const contactLink = page.locator('footer a:has-text("Contact")');
-    const privacyPolicyLink = page.locator('footer a:has-text("Privacy Policy")');
-    
-    await expect(aboutLink).toBeVisible();
-    await expect(contactLink).toBeVisible();
-    await expect(privacyPolicyLink).toBeVisible();
-  });
-  
-  test('Handles mobile menu button and visibility', async ({ page }) => {
-    const mobileMenuButton = page.locator('button:text("☰")', { hasText: '☰' });
-    
-    await page.setViewportSize({ width: 375, height: 812 }); // Simulate mobile
+  // Test navigation to Sign Up page
+  await signUpLink.click();
+  await page.waitForLoadState('domcontentloaded');
+  await expect(page).toHaveURL('https://foodcelebrator.onrender.com/signup');
 
-    await expect(mobileMenuButton).toBeVisible();
-    await mobileMenuButton.click();
-    // Example handling of the expected action on the menu button click
-    // const someMenu = ... 
-    // await expect(someMenu).toBeVisible();
-  });
+  // Return to homepage
+  await page.goBack();
+  await page.waitForLoadState('domcontentloaded');
 
+  // Test navigation to Login page
+  await loginLink.click();
+  await page.waitForLoadState('domcontentloaded');
+  await expect(page).toHaveURL('https://foodcelebrator.onrender.com/login');
+
+  // Return to homepage
+  await page.goBack();
+  await page.waitForLoadState('domcontentloaded');
+
+  // Verify "Upload your photo!" button is present and interactable
+  const uploadButton = page.locator('button', { hasText: 'Upload your photo!' });
+  await uploadButton.waitFor();
+  await expect(uploadButton).toBeVisible();
+
+  // Click the Login button on the main page
+  const mainLoginButton = page.locator('button:has-text("Login")').first();
+  await mainLoginButton.waitFor();
+  await expect(mainLoginButton).toBeVisible();
+  await mainLoginButton.click();
+
+  // Ensure the page navigates to login
+  await page.waitForLoadState('domcontentloaded');
+  await expect(page).toHaveURL('https://foodcelebrator.onrender.com/login');
 });

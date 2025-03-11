@@ -11,44 +11,52 @@ const { spawn } = require("child_process");
 
 async function runPlaywrightTest(filePath) {
   return new Promise((resolve, reject) => {
-    console.log(`Attempting to run test at: ${filePath}`);
-
-    const normalizedPath = path.normalize(filePath).replace(/\\/g, "/"); // Fix Windows path issues
-    const command = `npx`;
+    const normalizedPath = path.normalize(filePath).replace(/\\/g, "/");
     const args = ["playwright", "test", normalizedPath, "--reporter=json"];
-    const testDir = path.join(__dirname, "tests"); // Ensure correct working directory
-
-    console.log(`Executing: ${command} ${args.join(" ")} in ${testDir}`);
-
-    const child = spawn(command, args, {
-      cwd: testDir, // Run inside tests directory
+    const child = spawn("npx", args, {
+      cwd: path.join(__dirname, "tests"),
       shell: true,
-      stdio: ["ignore", "pipe", "pipe"],
     });
 
     let stdoutData = "";
     let stderrData = "";
 
     child.stdout.on("data", (data) => {
-      stdoutData += data.toString().trim();
+      stdoutData += data.toString();
     });
 
     child.stderr.on("data", (data) => {
-      stderrData += data.toString().trim();
-    });
-
-    child.stdout.on("end", () => {
-      if (stdoutData) {
-        resolve(stdoutData); // Ensure Playwright output is complete
-      } else {
-        reject("No output received from Playwright.");
-      }
+      stderrData += data.toString();
     });
 
     child.on("close", (code) => {
-      if (code !== 0) {
-        console.error("Error executing test:", stderrData || "Unknown error");
-        reject(stderrData || "Unknown error");
+      let parsedResults;
+      try {
+        // The JSON reporter output is in stdout
+        parsedResults = JSON.parse(stdoutData);
+      } catch (err) {
+        console.error("Failed to parse Playwright JSON reporter output:", err);
+      }
+
+      if (code === 0) {
+        // All tests passed
+        return resolve({
+          success: true,
+          results: parsedResults, // The structured test results
+          rawStdout: stdoutData, // Optional raw output
+          rawStderr: stderrData,
+        });
+      } else {
+        // Some or all tests failed
+        console.error("Playwright test failed:", stderrData || stdoutData);
+        // IMPORTANT: We still resolve, but with success: false
+        return resolve({
+          success: false,
+          results: parsedResults, // We can still see which tests failed
+          rawStdout: stdoutData,
+          rawStderr: stderrData || stdoutData,
+          error: stderrData || stdoutData || "Unknown error",
+        });
       }
     });
   });
@@ -111,7 +119,7 @@ async function generatePlaywrightTest(html, url) {
     const response = await axios.post(
       "https://api.openai.com/v1/chat/completions",
       {
-        model: "gpt-4o",
+        model: "gpt-4.5-preview",
         messages: [{ role: "user", content: prompt }],
         max_tokens: 3500,
       },
@@ -173,7 +181,6 @@ app.post("/api/submit-url", async (req, res) => {
 
 app.post("/api/run-test", async (req, res) => {
   const { testFilePath } = req.body;
-
   if (!testFilePath) {
     return res
       .status(400)
@@ -181,14 +188,15 @@ app.post("/api/run-test", async (req, res) => {
   }
 
   try {
-    console.log(`Running Playwright test: ${testFilePath}`);
     const result = await runPlaywrightTest(testFilePath);
-    res.json({ success: true, result });
+    // `result` is the object we resolved in runPlaywrightTest
+    res.json(result);
   } catch (error) {
+    // If something truly unexpected happens (like a spawn error),
+    // then we 500. But normal test failures won't land here anymore.
     console.error("Error running test:", error);
     res.status(500).json({ success: false, error: error.toString() });
   }
 });
-
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
