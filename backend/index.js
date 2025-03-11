@@ -102,26 +102,30 @@ async function generatePlaywrightTest(html, url) {
     // The prompt is carefully designed to produce stable, universal test scripts.
     // Modify as needed for your production environment.
     const prompt = `
-We want a production-ready Playwright test script for ${url}. The HTML below may be partial or dynamic, so produce stable tests likely to pass. 
+We want a production-ready Playwright test script for ${url}. The HTML below may be partial or dynamic, so produce stable tests likely to pass.
 
-**Key points**:
-1. Separate checks into multiple \`test()\` blocks with descriptive names.
-2. Use robust locators (e.g., \`page.getByRole(), page.getByText(), page.locator()\`) and wait for elements to be visible.
+**Key instructions**:
+1. Separate checks into multiple test() blocks with descriptive names.
+2. Use robust locators (e.g., page.getByRole(), page.getByText(), page.locator()) and wait for elements to be visible.
 3. Validate basic functionality: page load, main elements (headings, links, buttons), etc.
 4. Keep tests universal; avoid relying on dynamic data or complex interactions.
-5. Return only the JavaScript test script without extra commentary.
+5. **If multiple elements match the same locator in strict mode, refine the selector or use .first() (or .nth()) to pick one.**  
+6. **Skip or refine checks for text strings that may appear multiple times (like "new", "More", "Search"). Only test them if you can disambiguate via a unique attribute, exact text, or .first() usage.**  
+7. **Only create a test for an element if there's clear evidence it exists in the snippet (e.g. a ‘search’ input or a specific link text). If it's not clearly in the HTML, do not test it.**  
+8. Return only the JavaScript test script without extra commentary.
 
 HTML:
 \`\`\`
 ${html}
 \`\`\`
+
 `;
 
     // Make sure OPENAI_API_KEY is set in your environment or .env file
     const response = await axios.post(
       "https://api.openai.com/v1/chat/completions",
       {
-        model: "gpt-4.5-preview",
+        model: "gpt-4o",
         messages: [{ role: "user", content: prompt }],
         // You can fine-tune temperature and max_tokens as appropriate.
         temperature: 0.2,

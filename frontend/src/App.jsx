@@ -300,13 +300,6 @@ function App() {
                       <div key={i}>{line}</div>
                     ))}
                   </div>
-
-                  {/* If we have a testError from the server */}
-                  {item.testError && (
-                    <p className="mt-2 text-red-500">
-                      <strong>Error details:</strong> {item.testError}
-                    </p>
-                  )}
                 </div>
               )}
             </div>
