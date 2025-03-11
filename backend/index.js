@@ -5,13 +5,20 @@ const axios = require("axios");
 const playwright = require("playwright");
 const fs = require("fs");
 const path = require("path");
-const { exec } = require("child_process");
-const cheerio = require("cheerio");
 const { spawn } = require("child_process");
+const cheerio = require("cheerio");
 
+const app = express();
+app.use(cors());
+app.use(express.json());
+
+/**
+ * Utility: Run the Playwright test at the given file path and return structured results.
+ */
 async function runPlaywrightTest(filePath) {
   return new Promise((resolve, reject) => {
     const normalizedPath = path.normalize(filePath).replace(/\\/g, "/");
+    // Note: We use JSON reporter to get structured results
     const args = ["playwright", "test", normalizedPath, "--reporter=json"];
     const child = spawn("npx", args, {
       cwd: path.join(__dirname, "tests"),
@@ -32,171 +39,203 @@ async function runPlaywrightTest(filePath) {
     child.on("close", (code) => {
       let parsedResults;
       try {
-        // The JSON reporter output is in stdout
         parsedResults = JSON.parse(stdoutData);
       } catch (err) {
-        console.error("Failed to parse Playwright JSON reporter output:", err);
+        console.error("Failed to parse JSON reporter output:", err);
       }
 
-      if (code === 0) {
-        // All tests passed
-        return resolve({
-          success: true,
-          results: parsedResults, // The structured test results
-          rawStdout: stdoutData, // Optional raw output
-          rawStderr: stderrData,
-        });
-      } else {
-        // Some or all tests failed
-        console.error("Playwright test failed:", stderrData || stdoutData);
-        // IMPORTANT: We still resolve, but with success: false
-        return resolve({
-          success: false,
-          results: parsedResults, // We can still see which tests failed
-          rawStdout: stdoutData,
-          rawStderr: stderrData || stdoutData,
-          error: stderrData || stdoutData || "Unknown error",
-        });
-      }
+      const finalResults = {
+        success: code === 0,
+        // We'll pass through the raw logs in case the user wants them
+        rawStdout: stdoutData,
+        rawStderr: stderrData,
+        // The structured test results
+        results: parsedResults,
+        // Provide an error if something went wrong
+        error: code === 0 ? null : stderrData || stdoutData || "Unknown error",
+      };
+      resolve(finalResults);
     });
   });
 }
 
-function extractMainContent(html) {
-  const $ = cheerio.load(html);
-  return $("h1, h2, h3, p, button, a, form").slice(0, 100).toString(); // Limit elements
+/**
+ * Utility: Clean the AI's response of markdown fences if needed
+ */
+function cleanPlaywrightTest(testScript) {
+  return testScript.replace(/```javascript|```js|```/g, "").trim();
 }
 
+/**
+ * Utility: Save the generated Playwright test to the local filesystem.
+ */
 function savePlaywrightTest(url, testScript) {
-  const sanitizedUrl = url.replace(/[^a-zA-Z0-9]/g, "_"); // Replace non-alphanumeric chars
+  const sanitizedUrl = url.replace(/[^a-zA-Z0-9]/g, "_");
   const filePath = path.join(__dirname, "tests", `${sanitizedUrl}.spec.js`);
 
   fs.writeFileSync(filePath, testScript, "utf8");
-  console.log(`Test script saved: ${filePath}`);
+  console.log(`Test script saved to: ${filePath}`);
   return filePath;
 }
 
-// Function to fetch HTML from a given URL
+/**
+ * Utility: Launch a browser, fetch and return the HTML for the given URL.
+ */
 async function fetchHTML(url) {
-  const browser = await playwright.chromium.launch(); // Launch browser
-  const page = await browser.newPage(); // Open a new page
-  await page.goto(url, { waitUntil: "domcontentloaded" }); // Navigate to the URL
-  const html = await page.content(); // Get page HTML
-  await browser.close(); // Close browser
+  const browser = await playwright.chromium.launch();
+  const page = await browser.newPage();
+  await page.goto(url, { waitUntil: "domcontentloaded" });
+  const html = await page.content();
+  await browser.close();
   return html;
 }
 
-function cleanPlaywrightTest(testScript) {
-  return testScript.replace(/```javascript|```/g, "").trim();
-}
-
+/**
+ * Generates a production-ready Playwright test script using the real OpenAI API.
+ *
+ * @param {string} html - The fetched HTML of the target URL (may be partial or dynamic).
+ * @param {string} url - The target URL for which we generate a test script.
+ * @returns {string|null} The cleaned test script as a string, or null if generation fails.
+ */
 async function generatePlaywrightTest(html, url) {
   try {
-    const prompt = `Analyze the following HTML for ${url} and generate a Playwright test script that:
-  - Focuses on **critical user interactions** (e.g., login, form submissions, page navigation, button clicks).
-  - Ensures elements **exist and are visible before interacting**.
-  - Uses **robust Playwright best practices**, including:
-    - **Waiting for elements** using \`await page.waitForLoadState('domcontentloaded')\`, \`locator.waitFor()\`, or \`page.waitForSelector()\`.
-    - Using **assertions** to verify elements are present before interacting (e.g., \`expect(locator).toBeVisible()\` before clicking).
-    - **Handling nested elements** properly (e.g., verifying elements within divs, spans, or shadow DOM).
-    - Using **\`page.locator()\` instead of brittle selectors** for better stability.
-    - **Validating element presence dynamically** to avoid flaky tests.
-    - Adapting to **JavaScript-rendered content** by waiting for the page to settle before interaction.
-  - Avoids:
-    - **Overly specific or brittle selectors** that may change frequently.
-    - **Strict assumptions about text content** unless found in the actual HTML.
-    - **Unrealistic test cases** that rely on elements that may not always be present.
-  
-  **If elements might load asynchronously, add appropriate waiting strategies.**  
-  **If multiple elements match a selector, ensure the test selects the correct one.**  
+    // The prompt is carefully designed to produce stable, universal test scripts.
+    // Modify as needed for your production environment.
+    const prompt = `
+We want a production-ready Playwright test script for ${url}. The HTML below may be partial or dynamic, so produce stable tests likely to pass. 
 
-  **Return only the JavaScript Playwright test script, without explanations.**  
+**Key points**:
+1. Separate checks into multiple \`test()\` blocks with descriptive names.
+2. Use robust locators (e.g., \`page.getByRole(), page.getByText(), page.locator()\`) and wait for elements to be visible.
+3. Validate basic functionality: page load, main elements (headings, links, buttons), etc.
+4. Keep tests universal; avoid relying on dynamic data or complex interactions.
+5. Return only the JavaScript test script without extra commentary.
 
-  **HTML:**  
-  ${html}
-  `;
+HTML:
+\`\`\`
+${html}
+\`\`\`
+`;
 
+    // Make sure OPENAI_API_KEY is set in your environment or .env file
     const response = await axios.post(
       "https://api.openai.com/v1/chat/completions",
       {
         model: "gpt-4.5-preview",
         messages: [{ role: "user", content: prompt }],
-        max_tokens: 3500,
+        // You can fine-tune temperature and max_tokens as appropriate.
+        temperature: 0.2,
+        max_tokens: 1500,
       },
       {
         headers: {
-          Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
           "Content-Type": "application/json",
+          Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
         },
       }
     );
 
-    let testScript = response.data.choices[0].message.content;
-    return cleanPlaywrightTest(testScript); // Sanitize script before returning
+    let testScript = response.data.choices[0]?.message?.content || "";
+    testScript = cleanPlaywrightTest(testScript);
+
+    // Optional: Ensure we got something that looks like JS code.
+    if (!testScript || !testScript.includes("test(")) {
+      console.warn(
+        "AI did not return a valid Playwright test script. Response:",
+        testScript
+      );
+      return null;
+    }
+
+    return testScript;
   } catch (error) {
-    console.error("Error calling OpenAI API:", error);
+    console.error("Error generating Playwright test via OpenAI:", error);
     return null;
   }
 }
 
-const app = express();
-app.use(cors());
-app.use(express.json());
-
+/**
+ * Main route - just a sanity check
+ */
 app.get("/", (req, res) => {
-  res.send("Server is running");
+  res.send("Server is up and running");
 });
 
+/**
+ * Endpoint: Submit a URL to fetch HTML, generate a test, and save the test file.
+ */
 app.post("/api/submit-url", async (req, res) => {
   const { url } = req.body;
 
-  try {
-    console.log(`Fetching HTML for: ${url}`);
-    const browser = await playwright.chromium.launch(); // Start browser
-    const page = await browser.newPage();
-    await page.goto(url, { waitUntil: "networkidle" }); // Ensures dynamic content is loaded
-    const html = await page.content(); // Extracts the actual HTML
-    await browser.close(); // Close browser after use
+  if (!url) {
+    return res.status(400).json({
+      success: false,
+      error: "No URL provided. Please include 'url' in the request body.",
+    });
+  }
 
-    console.log(`Generating Playwright test for: ${url}`);
+  try {
+    console.log(`[submit-url] Fetching HTML for: ${url}`);
+    // fetch the HTML
+    const html = await fetchHTML(url);
+
+    console.log(`[submit-url] Generating Playwright test for: ${url}`);
     const playwrightTest = await generatePlaywrightTest(html, url);
 
     if (!playwrightTest) {
-      return res
-        .status(500)
-        .json({ success: false, error: "Failed to generate test" });
+      return res.status(500).json({
+        success: false,
+        error: "Failed to generate test script.",
+      });
     }
 
-    // Save the test script
+    // save the test script
     const testFilePath = savePlaywrightTest(url, playwrightTest);
 
-    res.json({ success: true, html, playwrightTest, testFilePath });
+    return res.json({
+      success: true,
+      html,
+      playwrightTest,
+      testFilePath,
+    });
   } catch (error) {
-    console.error("Error processing request:", error);
-    res
-      .status(500)
-      .json({ success: false, error: "Failed to process request" });
+    console.error("[submit-url] Error:", error);
+    return res.status(500).json({
+      success: false,
+      error: "An error occurred while processing your request.",
+    });
   }
 });
 
+/**
+ * Endpoint: Run the test script that was saved previously
+ */
 app.post("/api/run-test", async (req, res) => {
   const { testFilePath } = req.body;
+
   if (!testFilePath) {
-    return res
-      .status(400)
-      .json({ success: false, error: "Test file path is missing" });
+    return res.status(400).json({
+      success: false,
+      error:
+        "Test file path not provided. Include 'testFilePath' in the request.",
+    });
   }
 
   try {
+    console.log(`[run-test] Running test for file: ${testFilePath}`);
     const result = await runPlaywrightTest(testFilePath);
-    // `result` is the object we resolved in runPlaywrightTest
-    res.json(result);
+    return res.json(result);
   } catch (error) {
-    // If something truly unexpected happens (like a spawn error),
-    // then we 500. But normal test failures won't land here anymore.
-    console.error("Error running test:", error);
-    res.status(500).json({ success: false, error: error.toString() });
+    console.error("[run-test] Error running test:", error);
+    return res.status(500).json({
+      success: false,
+      error:
+        error.message || "An unknown error occurred while running the test.",
+    });
   }
 });
+
 const PORT = process.env.PORT || 5000;
-app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+app.listen(PORT, () => {
+  console.log(`Server running on port ${PORT}`);
+});

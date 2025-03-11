@@ -2,64 +2,99 @@ import { useState } from "react";
 import axios from "axios";
 
 function App() {
-  const [url, setUrl] = useState("");
-  const [urls, setUrls] = useState([]);
+  const [urlInput, setUrlInput] = useState("");
+  // We store a list of "TestItems" for each URL the user has submitted
+  const [testItems, setTestItems] = useState([]);
 
-  // Handle submitting a new URL to generate a test
-  const handleSubmit = async () => {
-    if (!url) return;
+  /**
+   * Submit a URL to the backend to fetch HTML and generate the Playwright test script.
+   */
+  const handleSubmitUrl = async () => {
+    if (!urlInput) return;
 
-    // Add a new entry to our list of URLs, marking it as "loading"
-    setUrls((prevUrls) => [
-      ...prevUrls,
-      {
-        url,
-        loading: true,
-        html: null,
-        playwrightTest: null,
-        testFilePath: null,
-        runningTest: false,
-        testSuccess: null,
-        testResults: null, // structured object from JSON reporter
-        testError: null,
-      },
-    ]);
+    // Immediately add an item to the list in "loading" state
+    const newItem = {
+      url: urlInput,
+      loadingGeneration: true,
+      html: null,
+      testScript: null,
+      testFilePath: null,
+      generationError: null,
+
+      // We'll also track test execution states
+      runningTest: false,
+      testResults: null,
+      testSuccess: null,
+      testError: null,
+    };
+
+    setTestItems((prev) => [...prev, newItem]);
+    setUrlInput("");
 
     try {
       const response = await axios.post(
         "http://localhost:5000/api/submit-url",
         {
-          url,
+          url: urlInput,
         }
       );
-
-      // Update the newly added item with the returned info
-      setUrls((prevUrls) =>
-        prevUrls.map((item) =>
-          item.url === url
-            ? {
+      if (response.data.success) {
+        // Update the new item with the data
+        setTestItems((prev) =>
+          prev.map((item) => {
+            if (item.url === urlInput) {
+              return {
                 ...item,
-                loading: false,
+                loadingGeneration: false,
                 html: response.data.html,
-                playwrightTest: response.data.playwrightTest,
+                testScript: response.data.playwrightTest,
                 testFilePath: response.data.testFilePath,
-              }
-            : item
-        )
+              };
+            }
+            return item;
+          })
+        );
+      } else {
+        // If success is false, we have a generation error
+        setTestItems((prev) =>
+          prev.map((item) => {
+            if (item.url === urlInput) {
+              return {
+                ...item,
+                loadingGeneration: false,
+                generationError: response.data.error || "Unknown error",
+              };
+            }
+            return item;
+          })
+        );
+      }
+    } catch (err) {
+      console.error("Error generating test:", err);
+      setTestItems((prev) =>
+        prev.map((item) => {
+          if (item.url === urlInput) {
+            return {
+              ...item,
+              loadingGeneration: false,
+              generationError: err.message || "Unknown error",
+            };
+          }
+          return item;
+        })
       );
-    } catch (error) {
-      console.error("Error fetching HTML and generating tests:", error);
-      // Optionally, store an error for the user here
     }
   };
 
-  // Handle running the test
+  /**
+   * Execute the saved test script on the server, parse results, and store them.
+   */
   const handleRunTest = async (testFilePath, url) => {
     if (!testFilePath) return;
 
-    // Mark the selected URL object as "runningTest"
-    setUrls((prevUrls) =>
-      prevUrls.map((item) =>
+    // Mark the item as running
+    setTestItems((prev) =>
+      prev.map((item) =>
         item.url === url
           ? { ...item, runningTest: true, testResults: null, testError: null }
           : item
@@ -67,173 +102,216 @@ function App() {
     );
 
     try {
-      // The server returns an object like:
-      // {
-      //   success: boolean,
-      //   results: <JSON reporter object>,
-      //   error: string,
-      //   rawStdout: string,
-      //   rawStderr: string
-      // }
       const response = await axios.post("http://localhost:5000/api/run-test", {
         testFilePath,
       });
       const { success, results, error } = response.data;
 
-      setUrls((prevUrls) =>
-        prevUrls.map((item) =>
+      setTestItems((prev) =>
+        prev.map((item) => {
+          if (item.url === url) {
+            return {
+              ...item,
+              runningTest: false,
+              testSuccess: success,
+              testResults: results,
+              testError: error,
+            };
+          }
+          return item;
+        })
+      );
+    } catch (err) {
+      console.error("Error running test:", err);
+      setTestItems((prev) =>
+        prev.map((item) =>
           item.url === url
             ? {
                 ...item,
                 runningTest: false,
-                testSuccess: success,
-                testResults: results,
-                testError: error || null,
+                testError: err.message || "Unknown error",
               }
             : item
         )
       );
-    } catch (error) {
-      // This .catch typically only triggers if there's a network or server error.
-      console.error("Error running test (request failed):", error);
-      setUrls((prevUrls) =>
-        prevUrls.map((item) =>
-          item.url === url
-            ? { ...item, runningTest: false, testError: error.toString() }
-            : item
-        )
-      );
     }
   };
 
-  // Safely format the JSON reporter results:
-  //  - handle top-level suite.specs
-  //  - handle nested suite.suites[].specs
+  /**
+   * Utility to flatten and format the structured JSON reporter results.
+   * We'll gather suite -> specs, and suite -> suites -> specs, etc.
+   */
   const formatTestResults = (results) => {
-    if (!results || !Array.isArray(results.suites)) {
-      return "No valid test results found.";
+    if (!results || !results.suites) {
+      return ["No valid test results found."];
     }
 
-    // Flatten out all specs from each top-level suite
-    const allSpecs = results.suites.flatMap((suite) => {
-      // 1) Gather top-level specs if present
-      const topLevelSpecs = (suite.specs || []).map((spec) => spec);
+    let lines = [];
+    for (const suite of results.suites) {
+      // Possibly push suite title if available
+      if (suite.title) {
+        lines.push(`Suite: ${suite.title}`);
+      }
 
-      // 2) If there's a sub-suites array, flatten those specs too
-      const nestedSpecs = (suite.suites || []).flatMap((subSuite) =>
-        (subSuite.specs || []).map((spec) => spec)
-      );
-
-      return [...topLevelSpecs, ...nestedSpecs];
-    });
-
-    // Map each spec's result to a pass/fail line
-    return allSpecs
-      .map((spec) => {
-        const firstResult = spec.tests?.[0]?.results?.[0];
-        if (!firstResult) {
-          return `❓ ${spec.title} → No test result found`;
+      // Specs in the current suite
+      if (Array.isArray(suite.specs)) {
+        for (const spec of suite.specs) {
+          lines.push(formatSingleSpec(spec));
         }
-        const status = firstResult.status;
-        const duration = firstResult.duration;
-        // Pass/fail indicator:
-        const icon = status === "passed" ? "✅" : "❌";
-        return `${icon} ${spec.title} → ${status} (${duration} ms)`;
-      })
-      .join("\n");
+      }
+
+      // Nested suites
+      if (Array.isArray(suite.suites)) {
+        for (const nested of suite.suites) {
+          lines.push(`  Sub-suite: ${nested.title}`);
+          if (Array.isArray(nested.specs)) {
+            for (const spec of nested.specs) {
+              lines.push("    " + formatSingleSpec(spec));
+            }
+          }
+        }
+      }
+    }
+
+    return lines;
+  };
+
+  const formatSingleSpec = (spec) => {
+    const testTitle = spec.title;
+    const testResults = spec.tests?.[0]?.results ?? [];
+    // We only pick the first result for simplicity, or you might iterate if there are multiple runs
+    if (!testResults.length) {
+      return `❓ ${testTitle} → No result data`;
+    }
+    const { status, duration, error } = testResults[0];
+    const icon = status === "passed" ? "✅" : "❌";
+    let line = `${icon} ${testTitle} → ${status} (${duration} ms)`;
+    if (status !== "passed" && error?.message) {
+      line += `\n      Error: ${error.message}`;
+    }
+    return line;
   };
 
   return (
-    <div className="p-5 max-w-2xl mx-auto">
-      <h1 className="text-2xl font-bold mb-4 text-center">
-        URL Playwright Tester
-      </h1>
+    <div className="p-4 max-w-3xl mx-auto">
+      <h1 className="text-2xl font-bold mb-4 text-center">Playwright Tester</h1>
 
-      {/* Input + Submit */}
-      <div className="flex mb-4">
+      {/* URL input */}
+      <div className="flex mb-6">
         <input
-          className="border border-gray-300 rounded-l-md p-2 w-full focus:outline-none focus:ring-2 focus:ring-blue-500"
-          value={url}
-          onChange={(e) => setUrl(e.target.value)}
-          placeholder="Enter a URL (e.g., https://example.com)"
+          className="border flex-grow p-2 rounded-l"
+          placeholder="Enter a URL..."
+          value={urlInput}
+          onChange={(e) => setUrlInput(e.target.value)}
         />
         <button
-          className="bg-blue-500 text-white p-2 rounded-r-md hover:bg-blue-600 transition"
-          onClick={handleSubmit}
+          className="bg-blue-600 text-white px-4 py-2 rounded-r"
+          onClick={handleSubmitUrl}
         >
           Submit
         </button>
       </div>
 
-      {/* List of submitted URLs */}
+      {/* List of test items */}
       <div className="space-y-4">
-        {urls.map((item, index) => (
-          <div key={index} className="p-4 border rounded-md shadow-sm bg-white">
-            {/* The URL */}
-            <p className="font-semibold text-lg">{item.url}</p>
+        {testItems.map((item, idx) => {
+          return (
+            <div className="bg-white p-4 rounded shadow" key={idx}>
+              <h2 className="font-semibold text-lg">
+                URL: <span className="text-blue-800">{item.url}</span>
+              </h2>
 
-            {/* Loading Indicator */}
-            {item.loading && (
-              <p className="text-gray-500">
-                Fetching HTML and generating tests...
-              </p>
-            )}
+              {/* If generation is loading */}
+              {item.loadingGeneration && (
+                <p className="italic text-gray-500">
+                  Generating test script...
+                </p>
+              )}
 
-            {/* Show HTML in a collapsible panel */}
-            {item.html && (
-              <details className="mt-2">
-                <summary className="cursor-pointer text-blue-500">
-                  Show HTML
-                </summary>
-                <pre className="overflow-auto max-h-40 p-2 bg-gray-200 border rounded-md">
-                  {item.html}
-                </pre>
-              </details>
-            )}
+              {/* If generation error */}
+              {item.generationError && (
+                <p className="text-red-600 font-semibold">
+                  Generation Error: {item.generationError}
+                </p>
+              )}
 
-            {/* Show generated Playwright test script */}
-            {item.playwrightTest && (
-              <details className="mt-2">
-                <summary className="cursor-pointer text-green-500">
-                  Show Playwright Test
-                </summary>
-                <pre className="overflow-auto max-h-40 p-2 bg-gray-200 border rounded-md">
-                  {item.playwrightTest}
-                </pre>
-              </details>
-            )}
+              {/* If generation succeeded, show some details */}
+              {!item.loadingGeneration &&
+                !item.generationError &&
+                item.html && (
+                  <details className="mt-2">
+                    <summary className="cursor-pointer text-blue-500">
+                      View Fetched HTML
+                    </summary>
+                    <pre className="max-h-40 overflow-auto border bg-gray-100 p-2 mt-1">
+                      {item.html}
+                    </pre>
+                  </details>
+                )}
 
-            {/* Button to run test, if we have a testFilePath */}
-            {item.testFilePath && (
-              <button
-                className="mt-2 bg-purple-500 text-white p-2 rounded-md hover:bg-purple-600 transition"
-                onClick={() => handleRunTest(item.testFilePath, item.url)}
-                disabled={item.runningTest}
-              >
-                {item.runningTest ? "Running..." : "Run Playwright Test"}
-              </button>
-            )}
+              {/* Show the test script */}
+              {!item.loadingGeneration && item.testScript && (
+                <details className="mt-2">
+                  <summary className="cursor-pointer text-green-600">
+                    View Generated Test Script
+                  </summary>
+                  <pre className="max-h-60 overflow-auto border bg-gray-100 p-2 mt-1">
+                    {item.testScript}
+                  </pre>
+                </details>
+              )}
 
-            {/* If we have test results, show them */}
-            {item.testResults && (
-              <details className="mt-2">
-                <summary className="cursor-pointer text-red-500">
-                  Show Test Results
-                </summary>
-                <pre className="overflow-auto max-h-40 p-2 bg-gray-200 border rounded-md">
-                  {formatTestResults(item.testResults)}
-                </pre>
-              </details>
-            )}
+              {/* Button to run test, if we have a filePath */}
+              {item.testFilePath && !item.loadingGeneration && (
+                <button
+                  className={`mt-3 px-4 py-2 rounded text-white ${
+                    item.runningTest
+                      ? "bg-gray-400 cursor-not-allowed"
+                      : "bg-purple-600 hover:bg-purple-700"
+                  }`}
+                  onClick={() => handleRunTest(item.testFilePath, item.url)}
+                  disabled={item.runningTest}
+                >
+                  {item.runningTest ? "Running test..." : "Run Playwright Test"}
+                </button>
+              )}
 
-            {/* If success is false, show the error message */}
-            {item.testSuccess === false && item.testError && (
-              <div className="mt-2 text-red-600 font-semibold">
-                Some tests failed: {item.testError}
-              </div>
-            )}
-          </div>
-        ))}
+              {/* Display test results if we have them */}
+              {item.testResults && (
+                <div className="mt-4 bg-gray-50 border p-2 rounded">
+                  <h3 className="font-semibold text-md mb-2">
+                    Test Results for {item.url}:
+                  </h3>
+                  {/* If success is true or false, show summary */}
+                  {item.testSuccess && (
+                    <p className="text-green-700 font-medium">
+                      All tests passed successfully!
+                    </p>
+                  )}
+                  {item.testSuccess === false && (
+                    <p className="text-red-700 font-medium">
+                      Some or all tests failed.
+                    </p>
+                  )}
+
+                  {/* Show the detailed lines */}
+                  <div className="text-sm whitespace-pre-wrap">
+                    {formatTestResults(item.testResults).map((line, i) => (
+                      <div key={i}>{line}</div>
+                    ))}
+                  </div>
+
+                  {/* If we have a testError from the server */}
+                  {item.testError && (
+                    <p className="mt-2 text-red-500">
+                      <strong>Error details:</strong> {item.testError}
+                    </p>
+                  )}
+                </div>
+              )}
+            </div>
+          );
+        })}
       </div>
     </div>
   );

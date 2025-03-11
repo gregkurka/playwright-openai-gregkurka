@@ -1,63 +1,56 @@
 const { test, expect } = require('@playwright/test');
 
-test('Greg Kurka website main interaction tests', async ({ page }) => {
-    await page.goto('https://www.gregkurka.com/');
-    await page.waitForLoadState('domcontentloaded');
+test.beforeEach(async ({ page }) => {
+  await page.goto('https://www.gregkurka.com/');
+});
 
-    const pageHeader = page.locator('header h1');
-    await expect(pageHeader).toBeVisible();
-    await expect(pageHeader).toHaveText('Greg Kurka');
+test('Page loads successfully with correct title', async ({ page }) => {
+  await expect(page).toHaveTitle(/Greg Kurka/);
+});
 
-    const musicReelHeading = page.locator('h3', { hasText: 'Music Reel' });
-    await expect(musicReelHeading).toBeVisible();
-    const musicReelIframe = musicReelHeading.locator('xpath=../following-sibling::div[1]//iframe');
-    await expect(musicReelIframe).toBeVisible();
+test('Header displays correct main heading and subheading', async ({ page }) => {
+  await expect(page.getByRole('heading', { name: 'Greg Kurka' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Sound, Composition, and Implementation for Games' })).toBeVisible();
+});
 
-    const soundDesignReelHeading = page.locator('h3', { hasText: 'Sound Design Reel' });
-    await expect(soundDesignReelHeading).toBeVisible();
-    const soundDesignIframe = soundDesignReelHeading.locator('xpath=../following-sibling::div[1]//iframe');
-    await expect(soundDesignIframe).toBeVisible();
+test('All video reels are visible', async ({ page }) => {
+  await expect(page.getByRole('heading', { name: 'Music Reel' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Sound Design Reel' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: '3d Game Kit Project for Unity and Wwise' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Lyra Project for Unreal Engine and FMOD' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Piano Improvisations' })).toBeVisible();
 
-    const unityProjectHeading = page.locator('h3', { hasText: '3d Game Kit Project for Unity and Wwise' });
-    await expect(unityProjectHeading).toBeVisible();
-    const unityIframe = unityProjectHeading.locator('xpath=../following-sibling::div[1]//iframe');
-    await expect(unityIframe).toBeVisible();
+  const videoFrames = page.locator('.video-container iframe');
+  await expect(videoFrames).toHaveCount(5);
+  for (let i = 0; i < 5; i++) {
+    await expect(videoFrames.nth(i)).toBeVisible();
+  }
+});
 
-    const unrealProjectHeading = page.locator('h3', { hasText: 'Lyra Project for Unreal Engine and FMOD' });
-    await expect(unrealProjectHeading).toBeVisible();
-    const unrealIframe = unrealProjectHeading.locator('xpath=../following-sibling::div[1]//iframe');
-    await expect(unrealIframe).toBeVisible();
+test('Headshot image is visible with correct alt text', async ({ page }) => {
+  const headshot = page.getByAltText('Greg Kurka Headshot');
+  await expect(headshot).toBeVisible();
+});
 
-    const pianoHeading = page.locator('h3', { hasText: 'Piano Improvisations' });
-    await expect(pianoHeading).toBeVisible();
-    const pianoIframe = pianoHeading.locator('xpath=../following-sibling::div[1]//iframe');
-    await expect(pianoIframe).toBeVisible();
+test('LinkedIn link is visible and has correct URL', async ({ page }) => {
+  const linkedInLink = page.getByRole('link', { name: "Greg Kurka's LinkedIn" });
+  await expect(linkedInLink).toBeVisible();
+  await expect(linkedInLink).toHaveAttribute('href', 'https://www.linkedin.com/in/greg-kurka-14874a148');
+});
 
-    const headshotImage = page.locator('img[alt="Greg Kurka Headshot"]');
-    await expect(headshotImage).toBeVisible();
+test('Programming and Composition links are visible and correct', async ({ page }) => {
+  const programmingLink = page.getByRole('link', { name: 'Learn more about my programming work with Kooapps' });
+  const compositionLink = page.getByRole('link', { name: 'Learn more about my music composition work with Kooapps' });
 
-    const linkedInLink = page.locator('a[href*="linkedin.com/in/greg-kurka-14874a148"]');
-    await expect(linkedInLink).toBeVisible();
-    await linkedInLink.click();
-    await page.waitForLoadState('domcontentloaded');
-    expect(page.url()).toContain('linkedin.com/in/greg-kurka-14874a148');
-    await page.goBack();
+  await expect(programmingLink).toBeVisible();
+  await expect(programmingLink).toHaveAttribute('href', 'https://gregkurka.com/programming/');
 
-    const programmingLink = page.locator('a[href="https://gregkurka.com/programming/"]');
-    await expect(programmingLink).toBeVisible();
-    await programmingLink.click();
-    await page.waitForLoadState('domcontentloaded');
-    expect(page.url()).toContain('/programming/');
-    await page.goBack();
+  await expect(compositionLink).toBeVisible();
+  await expect(compositionLink).toHaveAttribute('href', 'https://gregkurka.com/composition/');
+});
 
-    const compositionLink = page.locator('a[href="https://gregkurka.com/composition/"]');
-    await expect(compositionLink).toBeVisible();
-    await compositionLink.click();
-    await page.waitForLoadState('domcontentloaded');
-    expect(page.url()).toContain('/composition/');
-    await page.goBack();
-
-    const footerEmail = page.locator('footer a[href="mailto:gregkurka@gmail.com"]');
-    await expect(footerEmail).toBeVisible();
-    await expect(footerEmail).toHaveAttribute('href', 'mailto:gregkurka@gmail.com');
+test('Footer displays contact email correctly', async ({ page }) => {
+  const emailLink = page.getByRole('link', { name: 'gregkurka@gmail.com' });
+  await expect(emailLink).toBeVisible();
+  await expect(emailLink).toHaveAttribute('href', 'mailto:gregkurka@gmail.com');
 });
