@@ -1,63 +1,65 @@
-const { test, expect } = require("@playwright/test");
+const { test, expect } = require('@playwright/test');
 
-test("Hacker News page", async ({ page }) => {
-  // Ensure the page loads successfully
-  await page.goto("https://news.ycombinator.com");
-  await expect(page).toHaveTitle(/Hacker News/);
+test.describe('Hacker News Critical User Interactions', () => {
+  test.beforeEach(async ({ page }) => {
+    await page.goto('https://news.ycombinator.com');
+    await page.waitForLoadState('domcontentloaded');
+  });
 
-  // Check if all links are valid
-  const links = await page.locator("a");
-  const linkCount = await links.count();
+  test('Login link should be present and navigable', async ({ page }) => {
+    const loginLink = page.locator('a:has-text("login")');
+    await expect(loginLink).toBeVisible();
 
-  for (let i = 0; i < linkCount; i++) {
-    const link = links.nth(i);
-    let href = await link.getAttribute("href");
+    // Navigate to login page
+    await loginLink.click();
+    await page.waitForLoadState('domcontentloaded');
 
-    // Ignore empty, JavaScript-based, or internal anchor links
-    if (!href || href.startsWith("#") || href.startsWith("javascript"))
-      continue;
+    // Validate we are on the login page
+    await expect(page).toHaveURL(/.*login/);
+  });
 
-    // Ignore non-navigational Hacker News actions (like voting, hiding)
-    if (
-      href.includes("vote?id=") ||
-      href.includes("hide?id=") ||
-      href.includes("goto=")
-    )
-      continue;
+  test('Upvote a news item', async ({ page }) => {
+    const upvoteArrow = page.locator('a[id^="up_"]:first-of-type .votearrow');
 
-    // Convert relative URLs to absolute URLs
-    if (!href.startsWith("http")) {
-      href = new URL(href, "https://news.ycombinator.com").href;
-    }
+    // Ensure upvote arrow is visible
+    await expect(upvoteArrow).toBeVisible();
 
-    // Validate if the link is reachable
-    try {
-      const newPage = await page.context().newPage();
-      const response = await newPage.goto(href, {
-        waitUntil: "domcontentloaded",
-        timeout: 5000,
-      });
+    // Click the upvote arrow
+    await upvoteArrow.click();
+    
+    // Optionally, further checks can be added here, such as confirming the score increased.
+  });
 
-      if (response) {
-        expect(response.status()).toBeLessThan(400);
-      }
+  test('Navigate to a post and back', async ({ page }) => {
+    const firstPostLink = page.locator('.athing .titleline a').first();
 
-      await newPage.close();
-    } catch (error) {
-      console.warn(`Skipping unreachable link: ${href} - ${error.message}`);
-    }
-  }
+    // Ensure first post link is visible
+    await expect(firstPostLink).toBeVisible();
 
-  // Click the login link and verify navigation
-  const loginLink = page.locator('a[href="login?goto=news"]');
-  await loginLink.click();
-  await expect(page).toHaveURL(/login/);
+    // Click on the first post link
+    await firstPostLink.click();
+    await page.waitForLoadState('domcontentloaded');
 
-  // Click the back button
-  await page.goBack();
+    // Validate navigation by asserting a change in URL
+    await expect(page).not.toHaveURL('https://news.ycombinator.com');
 
-  // Verify page content
-  await expect(page.locator("a[href='news']").first()).toContainText(
-    "Hacker News"
-  );
+    // Navigate back
+    await page.goBack();
+    await page.waitForLoadState('domcontentloaded');
+
+    // Ensure we are back on the home page by checking the presence of the login link
+    await expect(page.locator('a:has-text("login")')).toBeVisible();
+  });
+
+  test('Submit link is visible and navigable', async ({ page }) => {
+    const submitLink = page.locator('a:has-text("submit")');
+    await expect(submitLink).toBeVisible();
+
+    // Navigate to the submit page
+    await submitLink.click();
+    await page.waitForLoadState('domcontentloaded');
+
+    // Validate navigation by asserting presence of submit form
+    await expect(page).toHaveURL(/.*submit/);
+  });
 });

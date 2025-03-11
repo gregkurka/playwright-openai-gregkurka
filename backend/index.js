@@ -6,27 +6,57 @@ const playwright = require("playwright");
 const fs = require("fs");
 const path = require("path");
 const { exec } = require("child_process");
+const cheerio = require("cheerio");
+const { spawn } = require("child_process");
 
 async function runPlaywrightTest(filePath) {
   return new Promise((resolve, reject) => {
     console.log(`Attempting to run test at: ${filePath}`);
 
-    // Ensure the file path uses forward slashes for Windows compatibility
-    const normalizedPath = path.normalize(filePath);
+    const normalizedPath = path.normalize(filePath).replace(/\\/g, "/"); // Fix Windows path issues
+    const command = `npx`;
+    const args = ["playwright", "test", normalizedPath, "--reporter=json"];
+    const testDir = path.join(__dirname, "tests"); // Ensure correct working directory
 
-    exec(
-      `npx playwright test "${normalizedPath}" --reporter=json`,
-      { cwd: __dirname },
-      (error, stdout, stderr) => {
-        if (error) {
-          console.error("Error executing test:", stderr || error);
-          reject(stderr || error);
-        } else {
-          resolve(stdout);
-        }
+    console.log(`Executing: ${command} ${args.join(" ")} in ${testDir}`);
+
+    const child = spawn(command, args, {
+      cwd: testDir, // Run inside tests directory
+      shell: true,
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+
+    let stdoutData = "";
+    let stderrData = "";
+
+    child.stdout.on("data", (data) => {
+      stdoutData += data.toString().trim();
+    });
+
+    child.stderr.on("data", (data) => {
+      stderrData += data.toString().trim();
+    });
+
+    child.stdout.on("end", () => {
+      if (stdoutData) {
+        resolve(stdoutData); // Ensure Playwright output is complete
+      } else {
+        reject("No output received from Playwright.");
       }
-    );
+    });
+
+    child.on("close", (code) => {
+      if (code !== 0) {
+        console.error("Error executing test:", stderrData || "Unknown error");
+        reject(stderrData || "Unknown error");
+      }
+    });
   });
+}
+
+function extractMainContent(html) {
+  const $ = cheerio.load(html);
+  return $("h1, h2, h3, p, button, a, form").slice(0, 100).toString(); // Limit elements
 }
 
 function savePlaywrightTest(url, testScript) {
@@ -52,25 +82,38 @@ function cleanPlaywrightTest(testScript) {
   return testScript.replace(/```javascript|```/g, "").trim();
 }
 
-async function generatePlaywrightTest(html) {
+async function generatePlaywrightTest(html, url) {
   try {
-    const prompt = `Given the following HTML, generate a Playwright test script that:
-      - Ensures the page loads successfully
-      - Checks if all links are valid
-      - Tests any forms or buttons
-      - Verifies text content
+    const prompt = `Analyze the following HTML for ${url} and generate a Playwright test script that:
+  - Focuses on **critical user interactions** (e.g., login, form submissions, page navigation, button clicks).
+  - Ensures elements **exist and are visible before interacting**.
+  - Uses **robust Playwright best practices**, including:
+    - **Waiting for elements** using \`await page.waitForLoadState('domcontentloaded')\`, \`locator.waitFor()\`, or \`page.waitForSelector()\`.
+    - Using **assertions** to verify elements are present before interacting (e.g., \`expect(locator).toBeVisible()\` before clicking).
+    - **Handling nested elements** properly (e.g., verifying elements within divs, spans, or shadow DOM).
+    - Using **\`page.locator()\` instead of brittle selectors** for better stability.
+    - **Validating element presence dynamically** to avoid flaky tests.
+    - Adapting to **JavaScript-rendered content** by waiting for the page to settle before interaction.
+  - Avoids:
+    - **Overly specific or brittle selectors** that may change frequently.
+    - **Strict assumptions about text content** unless found in the actual HTML.
+    - **Unrealistic test cases** that rely on elements that may not always be present.
+  
+  **If elements might load asynchronously, add appropriate waiting strategies.**  
+  **If multiple elements match a selector, ensure the test selects the correct one.**  
 
-      Return only the JavaScript Playwright test script, without any explanations.
+  **Return only the JavaScript Playwright test script, without explanations.**  
 
-      HTML:
-      ${html}`;
+  **HTML:**  
+  ${html}
+  `;
 
     const response = await axios.post(
       "https://api.openai.com/v1/chat/completions",
       {
         model: "gpt-4o",
         messages: [{ role: "user", content: prompt }],
-        max_tokens: 500,
+        max_tokens: 3500,
       },
       {
         headers: {
@@ -101,10 +144,14 @@ app.post("/api/submit-url", async (req, res) => {
 
   try {
     console.log(`Fetching HTML for: ${url}`);
-    const html = await fetchHTML(url);
+    const browser = await playwright.chromium.launch(); // Start browser
+    const page = await browser.newPage();
+    await page.goto(url, { waitUntil: "networkidle" }); // Ensures dynamic content is loaded
+    const html = await page.content(); // Extracts the actual HTML
+    await browser.close(); // Close browser after use
 
     console.log(`Generating Playwright test for: ${url}`);
-    const playwrightTest = await generatePlaywrightTest(html);
+    const playwrightTest = await generatePlaywrightTest(html, url);
 
     if (!playwrightTest) {
       return res
