@@ -125,7 +125,7 @@ async function generatePlaywrightTest(html, url) {
         messages: [{ role: "user", content: prompt }],
         // You can fine-tune temperature and max_tokens as appropriate.
         temperature: 0.2,
-        max_tokens: 1500,
+        max_tokens: 3500,
       },
       {
         headers: {
