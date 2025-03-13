@@ -164,6 +164,7 @@ app.get("/", (req, res) => {
 /**
  * Endpoint: Submit a URL to fetch HTML, generate a test, and save the test file.
  */
+
 app.post("/api/submit-url", async (req, res) => {
   const { url } = req.body;
 
@@ -181,27 +182,50 @@ app.post("/api/submit-url", async (req, res) => {
 
     console.log(`[submit-url] Generating Playwright test for: ${url}`);
 
-    //use premade hacker news code if the URL is hacker news, else generate code
-    if (url != "https://news.ycombinator.com/") {
-      const playwrightTest = await generatePlaywrightTest(html, url);
-    }
+    // Convert the URL into a valid filename format
+    const urlAsFilename =
+      "https___" +
+      url
+        // Remove "http://" or "https://"
+        .replace(/^https?:\/\//, "")
+        // Replace anything NOT a-z, A-Z, 0-9, or underscore with underscore
+        .replace(/[^a-zA-Z0-9_]/g, "_") +
+      ".spec.js";
 
-    if (!playwrightTest) {
-      return res.status(500).json({
-        success: false,
-        error: "Failed to generate test script.",
+    const testFilePath = path.join("tests", urlAsFilename);
+
+    if (fs.existsSync(testFilePath)) {
+      console.log(`[submit-url] Found existing test file for: ${url}`);
+
+      const playwrightTest = fs.readFileSync(testFilePath, "utf8");
+
+      return res.json({
+        success: true,
+        html,
+        playwrightTest,
+        testFilePath,
+      });
+    } else {
+      // Generate a new test script if one does not exist
+      const playwrightTest = await generatePlaywrightTest(html, url);
+
+      if (!playwrightTest) {
+        return res.status(500).json({
+          success: false,
+          error: "Failed to generate test script.",
+        });
+      }
+
+      // Save the test script
+      fs.writeFileSync(testFilePath, playwrightTest, "utf8");
+
+      return res.json({
+        success: true,
+        html,
+        playwrightTest,
+        testFilePath,
       });
     }
-
-    // save the test script
-    const testFilePath = savePlaywrightTest(url, playwrightTest);
-
-    return res.json({
-      success: true,
-      html,
-      playwrightTest,
-      testFilePath,
-    });
   } catch (error) {
     console.error("[submit-url] Error:", error);
     return res.status(500).json({
