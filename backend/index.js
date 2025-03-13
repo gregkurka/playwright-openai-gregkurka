@@ -67,18 +67,6 @@ function cleanPlaywrightTest(testScript) {
 }
 
 /**
- * Utility: Save the generated Playwright test to the local filesystem.
- */
-function savePlaywrightTest(url, testScript) {
-  const sanitizedUrl = url.replace(/[^a-zA-Z0-9]/g, "_");
-  const filePath = path.join(__dirname, "tests", `${sanitizedUrl}.spec.js`);
-
-  fs.writeFileSync(filePath, testScript, "utf8");
-  console.log(`Test script saved to: ${filePath}`);
-  return filePath;
-}
-
-/**
  * Utility: Launch a browser, fetch and return the HTML for the given URL.
  */
 async function fetchHTML(url) {
@@ -180,8 +168,6 @@ app.post("/api/submit-url", async (req, res) => {
     // fetch the HTML
     const html = await fetchHTML(url);
 
-    console.log(`[submit-url] Generating Playwright test for: ${url}`);
-
     // Convert the URL into a valid filename format
     const urlAsFilename =
       "https___" +
@@ -206,6 +192,7 @@ app.post("/api/submit-url", async (req, res) => {
         testFilePath,
       });
     } else {
+      console.log(`[submit-url] Generating Playwright test for: ${url}`);
       // Generate a new test script if one does not exist
       const playwrightTest = await generatePlaywrightTest(html, url);
 
