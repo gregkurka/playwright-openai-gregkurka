@@ -2,7 +2,23 @@
 
 ### What is this?
 
-This is my submission to QA Wolf's take home assessment to apply as a QA Engineer.
+This project is my submission for the QA Wolf take-home assessment for the QA Engineer role. It includes a frontend and backend setup, along with scripts to streamline development.
+
+### How to initialize project
+
+Create a `.env` file in the **backend** folder with the following contents:
+
+```bash
+PORT=5000
+OPENAI_API_KEY=YOUR_OPEN_AI_API_KEY_HERE
+```
+
+then install dependencies
+
+```bash
+cd backend && npm install
+cd ../frontend && npm install
+```
 
 ### Running the Project
 
