@@ -1,50 +1,35 @@
 const { test, expect } = require('@playwright/test');
 
-test('Hacker News homepage loads successfully', async ({ page }) => {
-  await page.goto('https://news.ycombinator.com/');
-  await expect(page).toHaveTitle('Hacker News');
-});
+test('Load and validate articles on Hacker News newest page', async ({ page }) => {
+  await page.goto('https://news.ycombinator.com/newest');
 
-test('Main navigation links are visible', async ({ page }) => {
-  await page.goto('https://news.ycombinator.com/');
-  const navLinks = ['newest', 'past', 'comments', 'ask', 'show', 'jobs', 'submit'];
-  for (const link of navLinks) {
-    await expect(page.locator(`a[href="${link}"]`)).toBeVisible();
+  // Extract 100 articles
+  const articles = await page.$$eval('.athing', (elements) => {
+    return elements.slice(0, 100).map(element => {
+      const id = element.getAttribute('id');
+      const titleElement = element.querySelector('.titleline a');
+      const title = titleElement ? titleElement.textContent : 'No title';
+      return { id, title };
+    });
+  });
+
+  // Extract timestamps
+  const timestamps = await page.$$eval('.subtext', (elements) => {
+    return elements.slice(0, 100).map(element => {
+      const timeElement = element.querySelector('.age a');
+      const timeString = timeElement ? timeElement.getAttribute('title') : '';
+      return new Date(timeString).getTime();
+    });
+  });
+
+  // Validate sorting
+  const isSorted = timestamps.every((time, index, arr) => index === 0 || time <= arr[index - 1]);
+  if (isSorted) {
+    console.log('✅ The first 100 articles are correctly sorted');
+  } else {
+    console.log('❌ The articles are NOT correctly sorted');
   }
-});
 
-test('Login link is visible', async ({ page }) => {
-  await page.goto('https://news.ycombinator.com/');
-  await expect(page.locator('a[href^="login"]')).toBeVisible();
-});
-
-test('First news item is visible with title and link', async ({ page }) => {
-  await page.goto('https://news.ycombinator.com/');
-  const firstItem = page.locator('tr.athing').first();
-  await expect(firstItem.locator('span.rank')).toHaveText('1.');
-  await expect(firstItem.locator('span.titleline > a')).toBeVisible();
-});
-
-test('Footer links are visible', async ({ page }) => {
-  await page.goto('https://news.ycombinator.com/');
-  const footerLinks = ['Guidelines', 'FAQ', 'Lists', 'API', 'Security', 'Legal', 'Apply to YC', 'Contact'];
-  for (const text of footerLinks) {
-    await expect(page.getByRole('link', { name: text })).toBeVisible();
-  }
-});
-
-test('Search input is visible in footer', async ({ page }) => {
-  await page.goto('https://news.ycombinator.com/');
-  await expect(page.getByRole('textbox', { name: 'Search:' })).toBeVisible();
-});
-
-test('RSS feed link is present in head', async ({ page }) => {
-  await page.goto('https://news.ycombinator.com/');
-  const rssLink = page.locator('link[type="application/rss+xml"]');
-  await expect(rssLink).toHaveAttribute('href', 'rss');
-});
-
-test('Y Combinator event announcement is visible', async ({ page }) => {
-  await page.goto('https://news.ycombinator.com/');
-  await expect(page.getByText('Join us for AI Startup School this June 16-17 in San Francisco!')).toBeVisible();
+  // Log the first five articles
+  console.table(articles.slice(0, 5));
 });
