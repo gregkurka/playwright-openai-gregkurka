@@ -1,5 +1,9 @@
 # qa-wolf-3
 
+### What is this?
+
+This is my submission to QA Wolf's take home assessment to apply as a QA Engineer.
+
 ### Running the Project
 
 To streamline starting both the backend and frontend during development, I've created a script at the root of the project: **`run-dev.sh`**.
