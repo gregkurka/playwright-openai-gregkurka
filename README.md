@@ -16,10 +16,10 @@ OPENAI_API_KEY=YOUR_OPEN_AI_API_KEY_HERE
 then install dependencies
 
 ```bash
-npm install
 cd backend && npm install
 cd ../frontend && npm install
 cd ..
+npm install
 ```
 
 ### Running the Project
@@ -44,7 +44,7 @@ To streamline starting both the backend and frontend during development, I've cr
      ```
   3. To stop both servers, press `Ctrl + C`.
 
-### Alternative for Specifics of WA Wolf Assignment
+### Alternative for Specifics of QA Wolf Assignment
 
 for the QA wolf assignment, you can also alternatively use
 
