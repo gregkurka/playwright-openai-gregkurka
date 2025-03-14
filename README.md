@@ -16,8 +16,10 @@ OPENAI_API_KEY=YOUR_OPEN_AI_API_KEY_HERE
 then install dependencies
 
 ```bash
+npm install
 cd backend && npm install
 cd ../frontend && npm install
+cd ..
 ```
 
 ### Running the Project
@@ -31,6 +33,7 @@ To streamline starting both the backend and frontend during development, I've cr
   3. Keeps both processes running until you stop them.
 
 - **How to use**:
+
   1. Make sure the script is executable:
      ```bash
      chmod +x run-dev.sh
@@ -40,3 +43,13 @@ To streamline starting both the backend and frontend during development, I've cr
      ./run-dev.sh
      ```
   3. To stop both servers, press `Ctrl + C`.
+
+### Alternative for Specifics of WA Wolf Assignment
+
+for the QA wolf assignment, you can also alternatively use
+
+```bash
+node index.js
+```
+
+to see the single test for Hacker News as called for by the assignment
