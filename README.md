@@ -52,4 +52,5 @@ for the QA wolf assignment, you can also alternatively use
 node index.js
 ```
 
-to see the single test for Hacker News as called for by the assignment
+to see the single test for Hacker News as called for by the assignment.
+In some cases it may be needed to run npm i again on the main folder after getting the node_modules folder for this command to work.
