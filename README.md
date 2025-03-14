@@ -54,3 +54,4 @@ node index.js
 
 to see the single test for Hacker News as called for by the assignment.
 In some cases it may be needed to run npm i again on the main folder after getting the node_modules folder for this command to work.
+It can be noted that index.js contains the same test that is in the backend tests folder involving hacker news.
