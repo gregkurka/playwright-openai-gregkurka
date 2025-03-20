@@ -1,8 +1,10 @@
-# qa-wolf-3
+# Playwright and Open AI
 
 ### What is this?
 
-This project is my submission for the QA Wolf take-home assessment for the QA Engineer role. It includes a frontend and backend setup, along with scripts to streamline development.
+This project is was originally made for a project submission for a QA Engineer job, and evolved into a full fledged project.
+
+The front end takes a URL from the user, fetches the HTML from that URL, sends the HTML to the OPEN AI API. The open AI API sends back playwright code for the user to run automated tests on that website.
 
 ### How to initialize project
 
@@ -44,16 +46,12 @@ To streamline starting both the backend and frontend during development, I've cr
      ```
   3. To stop both servers, press `Ctrl + C`.
 
-### Alternative for Specifics of QA Wolf Assignment
+### Quick playwright check
 
-for the QA wolf assignment, you can also alternatively use
+You can make a quick playwright check by running the command
 
 ```bash
 node index.js
 ```
 
-to see the single test for Hacker News as called for by the assignment.
-In some cases it may be needed to run npm i again on the main folder after getting the node_modules folder for this command to work.
-It can be noted that index.js contains the same test that is in the backend tests folder involving hacker news.
-
-### A Github Repo Exists of this Project and is Available Upon Request
+to see the single test for Hacker News.
